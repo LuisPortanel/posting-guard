@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "posting-guard"
+dynamic = ["version"]
+description = "Flag hidden text, invisible Unicode and prompt-injection lines in job postings before an LLM reads them."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Luis Portanel" }]
+requires-python = ">=3.9"
+dependencies = []
+keywords = ["prompt-injection", "llm", "security", "job-postings", "unicode", "html", "sanitization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security",
+    "Topic :: Text Processing :: Markup :: HTML",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+posting-guard = "posting_guard.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "posting_guard.__version__" }
+
+[tool.setuptools.package-data]
+posting_guard = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
