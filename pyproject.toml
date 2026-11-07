@@ -25,6 +25,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.urls]
+Homepage = "https://github.com/LuisPortanel/posting-guard"
+Issues = "https://github.com/LuisPortanel/posting-guard/issues"
+Changelog = "https://github.com/LuisPortanel/posting-guard/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 test = ["pytest>=7"]
 

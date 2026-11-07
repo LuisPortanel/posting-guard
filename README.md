@@ -16,11 +16,13 @@ It warns and never blocks. The verdict is `CLEAN` or `REVIEW`, and what to do wi
 
 ## Install
 
-Not on PyPI yet. From a clone:
+Not on PyPI yet. From GitHub:
 
 ```
-pip install .
+pip install git+https://github.com/LuisPortanel/posting-guard
 ```
+
+or from a clone, `pip install .`
 
 ## Command line
 
@@ -84,20 +86,35 @@ text_for_the_model = report.clean_text
 
 | Check | Details |
 |---|---|
-| Hidden HTML | inline styles (`display:none`, `visibility:hidden`, tiny `font-size`, near-zero `opacity`, white or transparent text, off-screen offsets, `clip`, zero height), the `hidden` attribute, and classes such as `sr-only`, `visually-hidden`, `d-none` or Tailwind's `hidden`. A responsive class that shows the element again (`hidden md:block`, `d-none d-lg-flex`) keeps it visible. |
+| Hidden HTML | inline styles (`display:none`, `visibility:hidden`, tiny `font-size`, near-zero `opacity`, white, near-white or transparent text in any notation, off-screen offsets, `clip`, zero height, `transform: scale(0)`), the `hidden` attribute, and classes such as `sr-only`, `visually-hidden`, `d-none` or Tailwind's `hidden`. White text on a dark background set in the same style stays visible, and so does an element a responsive class shows again (`hidden md:block`, `d-none d-lg-flex`). Hidden text counts from 4 words, not counting hashtags such as LinkedIn's `#LI-Remote` codes. |
 | Accessibility labels | short `sr-only` text ("opens in a new tab") is normal and ignored; 8 or more words, or an instruction, count as hidden text. |
 | Dropped markup | `<script>`, `<style>`, `<noscript>`, `<template>` and `<head>` are removed. |
 | HTML comments | reported when they read like a note to a model or a recruiter, not when they are template markers (`end header`, `[if IE]`). |
-| Invisible characters | zero-width characters, bidi controls, variation selectors and Unicode tag characters. Text hidden in tag characters is decoded and shown. Emoji sequences that legitimately use some of them (skin tones, ZWJ sequences, keycaps, subdivision flags) are kept. |
-| Instruction-like lines | lines addressed to an AI ("If you are an AI...", "Si eres una IA..."), "ignore previous instructions", canary phrases ("include the word X in your cover letter", "so we know you read this"), and requests to skip the form. |
-| Homoglyphs | words that mix Latin letters with Cyrillic or Greek look-alikes. |
+| Invisible characters | all zero-width characters, bidi controls, variation selectors and Unicode tag characters are removed and counted. They raise `REVIEW` when they split Latin words, hide text in tag characters (decoded and shown), reorder text (bidi overrides and isolates), or come as a run of variation selectors. Zero-width spaces that editors leave next to tags, soft hyphens and bidi marks in right-to-left text are only counted. Emoji sequences that need some of them (skin tones, ZWJ sequences, keycaps, subdivision flags) are kept. |
+| Instruction-like lines | lines addressed to an AI ("If you are an AI...", "Note to language models:", "[AI prompt: ...]", "Si eres una IA..."), "ignore previous instructions", read checks ("include the word X in your cover letter", "include the passcode X", "so we know you read this"), and requests to apply outside the form ("send your resume to jobs@...", "submit through LinkedIn"). The patterns also run on a copy of the text with Cyrillic and Greek look-alike letters turned into Latin ones, so a disguised instruction is still found. |
+| Homoglyphs | words that mix Latin letters with Cyrillic or Greek look-alikes are listed; two or more Latin words with look-alike letters swapped in raise `REVIEW`. A single mixed word is usually a keyboard-layout slip and is only listed. |
 | Hidden-only links | URLs that appear only inside hidden text. |
 | LinkedIn job pages | only the job description is analyzed, not the page's menus and modals. |
 
+## Evaluation
+
+Measured on a snapshot of 10,439 public postings from 355 Greenhouse, Lever and Ashby boards
+(2026-11-06), labeled by hand. Details, label definitions and caveats are in [`eval/`](eval/README.md).
+
+| | 0.1.0 | 0.2.0 |
+|---|---|---|
+| Precision | 5% | 40% |
+| Recall on found positives | 18% | 100% |
+| Planted traps caught (44 kinds) | 30 | 44 |
+
+0.2.0 was revised after reading that snapshot's errors, so its numbers there are optimistic. 40 of its
+42 false positives are one employer's opt-out line, a labeling call still pending.
+
 ## Limitations
 
-- These are heuristics. Precision and recall have not been measured yet; a labeled evaluation set is next on
-  the roadmap.
+- These are heuristics, measured on a single snapshot (see [Evaluation](#evaluation)). The 0.2.0 rules were
+  revised after looking at that snapshot's errors, so its numbers there are optimistic; a fresh snapshot is
+  the honest test.
 - Only inline styles and a fixed list of class names are understood. Text hidden by a stylesheet rule is not
   detected.
 - White text counts as hidden, so white text on a dark background is a false positive.
@@ -107,7 +124,7 @@ text_for_the_model = report.clean_text
 
 ## Roadmap
 
-1. A labeled evaluation set of public postings, with and without traps, and measured precision and recall.
+1. A second snapshot, labeled the same way, to test 0.2.0 on postings it was not tuned on.
 2. An MCP server and a small HTTP API, plus an optional LLM-based classifier compared against the rules on
    the same evaluation set.
 3. Semantic search over the evaluation set.

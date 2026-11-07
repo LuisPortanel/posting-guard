@@ -20,7 +20,12 @@ REVEAL_CLASS = re.compile(
     r"|not-sr-only)|d-(sm|md|lg|xl|xxl)-(block|inline|inline-block|flex|inline-flex|grid|table))$", re.I)
 
 _NUMBER = re.compile(r"^(-?\d*\.?\d+)\s*([a-z%]*)$")
-_INVISIBLE_COLORS = {"#fff", "#ffffff", "white", "transparent"}
+_NAMED = {"white": (255, 255, 255, 1.0), "transparent": (0, 0, 0, 0.0), "black": (0, 0, 0, 1.0),
+          "snow": (255, 250, 250, 1.0), "ghostwhite": (248, 248, 255, 1.0), "whitesmoke": (245, 245, 245, 1.0),
+          "ivory": (255, 255, 240, 1.0), "mintcream": (245, 255, 250, 1.0), "azure": (240, 255, 255, 1.0)}
+_COLOR_TOKEN = re.compile(r"#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b")
+NEAR_WHITE = 245          # every channel at or above this reads as white on a white page
+_ALPHA_INVISIBLE = 0.05
 
 
 def _number(value: str) -> Optional[Tuple[float, str]]:
@@ -42,21 +47,69 @@ def _tiny_font(value: str) -> bool:
     return size == 0
 
 
+def _channel(v: str, scale: float = 255) -> float:
+    v = v.strip()
+    return float(v[:-1]) * scale / 100 if v.endswith("%") else float(v)
+
+
+def parse_color(value: str) -> Optional[Tuple[float, float, float, float]]:
+    """(r, g, b, alpha) for #hex, rgb()/rgba(), hsl()/hsla() and a few named colors; None otherwise."""
+    v = value.strip().lower()
+    if v in _NAMED:
+        return _NAMED[v]
+    try:
+        if v.startswith("#"):
+            h = v[1:]
+            if len(h) in (3, 4):
+                h = "".join(c * 2 for c in h)
+            if len(h) not in (6, 8):
+                return None
+            alpha = int(h[6:8], 16) / 255 if len(h) == 8 else 1.0
+            return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha
+        m = re.fullmatch(r"(rgba?|hsla?)\((.*)\)", v)
+        if not m:
+            return None
+        parts = [p for p in re.split(r"[,\s/]+", m.group(2).strip()) if p]
+        alpha = _channel(parts[3], 1) if len(parts) > 3 else 1.0
+        if m.group(1).startswith("rgb"):
+            return _channel(parts[0]), _channel(parts[1]), _channel(parts[2]), alpha
+        # Saturation and lightness as fractions; a bare number means a percentage (CSS Color 4).
+        saturation, lightness = (_channel(p, 1) if p.endswith("%") else float(p) / 100 for p in parts[1:3])
+        # Only the lowest channel matters for "near white": it is l - s * min(l, 1 - l).
+        low = 255 * (lightness - saturation * min(lightness, 1 - lightness))
+        return low, low, low, alpha
+    except (ValueError, IndexError):
+        return None
+
+
 def _invisible_color(value: str) -> bool:
-    v = value.replace(" ", "")
-    if v in _INVISIBLE_COLORS or re.fullmatch(r"#(fff0|ffffff00)", v):
-        return True
-    return bool(re.fullmatch(r"(rgba|hsla)\(.*,(0|0?\.0+)\)", v))
+    c = parse_color(value)
+    if not c:
+        return False
+    r, g, b, alpha = c
+    return alpha < _ALPHA_INVISIBLE or min(r, g, b) >= NEAR_WHITE
+
+
+def _dark_background(value: str) -> bool:
+    """True when a background declaration sets a color that white text would show up on."""
+    for token in _COLOR_TOKEN.findall(value.lower()):
+        c = parse_color(token)
+        if c and c[3] >= 0.5:
+            return min(c[0], c[1], c[2]) < NEAR_WHITE
+    return False
 
 
 def style_hides(style: str) -> bool:
-    """True when an inline style hides its text from a human reader."""
+    """True when an inline style hides its text from a human reader. White text counts as hidden
+    unless the same style gives it a dark background."""
+    declarations = []
     for declaration in style.split(";"):
         prop, sep, value = declaration.partition(":")
-        if not sep:
-            continue
-        prop = prop.strip().lower()
-        value = value.lower().replace("!important", "").strip()
+        if sep:
+            declarations.append((prop.strip().lower(), value.lower().replace("!important", "").strip()))
+    dark_background = any(prop in ("background", "background-color") and _dark_background(value)
+                          for prop, value in declarations)
+    for prop, value in declarations:
         if prop.startswith("--"):
             continue                      # CSS custom property, e.g. --link-color
         if prop == "display" and value == "none":
@@ -69,7 +122,9 @@ def style_hides(style: str) -> bool:
             parsed = _number(value)
             if parsed and not parsed[1] and parsed[0] < 0.05:
                 return True
-        if prop == "color" and _invisible_color(value):
+        if prop == "color" and _invisible_color(value) and not dark_background:
+            return True
+        if prop == "transform" and re.search(r"\bscale[xy]?\(\s*0*\.?0+\s*(?:[,)])", value):
             return True
         if prop in ("left", "top", "right", "text-indent", "margin-left") and re.match(r"-\d{3,}", value):
             return True

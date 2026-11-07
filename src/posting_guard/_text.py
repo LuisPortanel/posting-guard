@@ -13,8 +13,19 @@ INVISIBLE_RANGES = {
     "variation-selector": [(0xFE00, 0xFE0F), (0xE0100, 0xE01EF)],
 }
 
-# Zero-width characters wedged between two word characters: a common way to break keyword filters.
-INSIDE_WORD = re.compile(r"\w[​-‍⁠-⁤﻿­]+\w")
+# Zero-width characters wedged between two Latin letters or digits: a common way to break keyword
+# filters. Soft hyphens are left out (they are hyphenation hints), and so are other scripts, where
+# joiners and non-joiners are part of normal spelling.
+_LATIN = r"[0-9A-Za-zÀ-ÖØ-öø-ɏ]"
+INSIDE_WORD = re.compile(_LATIN + "[​-‍⁠-⁤﻿]+" + _LATIN)
+# Bidi controls that reorder text (overrides, embeddings, isolates). Marks such as U+200E are normal
+# in right-to-left text and are only counted.
+REORDERING_BIDI = re.compile("[‪‫‭‮⁦-⁨]")
+
+# Cyrillic and Greek letters that look like Latin ones, for reading disguised words.
+_CONFUSABLES = str.maketrans(
+    "аеорсухіјѕԁԛԝАВЕКМНОРСТХІЈЅԜ" "αεικνορτυχΑΒΕΖΗΙΚΜΝΟΡΤΥΧ",
+    "aeopcyxijsdqwABEKMHOPCTXIJSW" "aeikvoptuxABEZHIKMNOPTYX")
 
 _BLACK_FLAG = 0x1F3F4
 _CANCEL_TAG = 0xE007F
@@ -113,6 +124,24 @@ def mixed_script_words(text: str) -> List[str]:
         if "LATIN" in scripts and len(scripts) > 1:
             found.add(word)
     return sorted(found)
+
+
+def latin_skeleton(text: str) -> str:
+    """Replace Cyrillic and Greek look-alikes with Latin letters, one character for one, so
+    instruction patterns also match disguised text ("іgnore prevіous іnstructions")."""
+    return text.translate(_CONFUSABLES)
+
+
+def disguised_words(words: List[str]) -> List[str]:
+    """Mixed-script words that are mostly Latin: a Latin word with look-alike letters swapped in.
+    A Cyrillic or Greek word with one stray Latin letter is a keyboard-layout slip, not a disguise."""
+    out = []
+    for word in words:
+        latin = sum(1 for c in word if _script_of(c) == "LATIN")
+        other = sum(1 for c in word if _script_of(c) in ("CYRILLIC", "GREEK"))
+        if latin > other:
+            out.append(word)
+    return out
 
 
 def tidy(text: str) -> str:
